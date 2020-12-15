@@ -88,7 +88,15 @@ public:
 		LOGI << "read from process.mj";
 		if (in.is_open()) 
 		{
-			std::string str;
+			char path[255];
+			GetModuleFileNameA(nullptr, path, 255);
+			char*p1 = path;
+			char* p= strrchr(p1, '\\');
+			p++;
+			*p = '\0';
+
+
+			std::string str(path);
 			while (!in.eof()) 
 			{
 				processInfo pi;
@@ -96,7 +104,16 @@ public:
 
 				std::transform(pi.processPath.begin(), pi.processPath.end(), pi.processPath.begin(), ::tolower);
 				int pst = pi.processPath.rfind('\\');
-				m_processList.emplace(pi.processPath.substr(pst+1),pi);
+				std::string name = pi.processPath.substr(pst + 1);
+				if (pi.processPath[1] != ':')
+				{
+
+					char pathA[255];
+					sprintf(pathA, "%s%s", path, pi.processPath.data());
+
+					pi.processPath = pathA;
+				}
+				m_processList.emplace(name,pi);
 
 				LOGI << m_processList.size()<<" >> " << pi.processPath;
 			}
