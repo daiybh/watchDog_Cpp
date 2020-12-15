@@ -64,7 +64,7 @@ void windowsRun(char* exePath)
 	if (lRet != ERROR_SUCCESS)
 	{
 		//printf("系统参数错误,不能随系统启动");
-		AfxMessageBox("系统参数错误,不能随系统启动");
+		
 		LOGE << "注册系统启动失败 ，请使用管理员权限运行";
 		return;
 	}

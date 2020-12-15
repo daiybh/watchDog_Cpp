@@ -40,4 +40,5 @@ public:
 	LRESULT OnShowTask(WPARAM wParam, LPARAM lParam);
 	void handle_rbuttonup();
 	afx_msg void OnDestroy();
+	afx_msg void OnTimer(UINT_PTR nIDEvent);
 };

@@ -36,6 +36,7 @@ BEGIN_MESSAGE_MAP(CwatchDogCppDlg, CDialogEx)
 	ON_BN_CLICKED(IDOK, &CwatchDogCppDlg::OnBnClickedOk)
 	ON_WM_SYSCOMMAND()
 	ON_WM_DESTROY()
+	ON_WM_TIMER()
 END_MESSAGE_MAP()
 
 
@@ -50,7 +51,7 @@ BOOL CwatchDogCppDlg::OnInitDialog()
 	SetIcon(m_hIcon, FALSE);		// Set small icon
 
 	// TODO: Add extra initialization here
-
+	SetTimer(1, 1000, nullptr);
 	pm.startMoniter();
 	return TRUE;  // return TRUE  unless you set the focus to a control
 }
@@ -225,4 +226,13 @@ void CwatchDogCppDlg::OnDestroy()
 
 	CDialogEx::OnDestroy();
 
+}
+
+
+void CwatchDogCppDlg::OnTimer(UINT_PTR nIDEvent)
+{
+	// TODO: Add your message handler code here and/or call default
+	ToTray();
+	KillTimer(1);
+	CDialogEx::OnTimer(nIDEvent);
 }

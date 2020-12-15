@@ -82,14 +82,6 @@ public:
 
 	void startMoniter() 
 	{
-		char *buffer=new char[10 * 1024 * 1024];
-		char cmd[128];
-		memset(cmd, 0, sizeof(cmd));
-
-		memset(buffer, 0, sizeof(10 * 1024 * 1024));
-
-		std::sprintf(cmd, "%s%s%s", "tasklist /fi \"imagename eq ", "qq.exe", "\" /fo list");
-		execmd_z(cmd, buffer, 2);
 		//read ini
 		std::ifstream in("process.mj");
 
@@ -108,6 +100,7 @@ public:
 
 				LOGI << m_processList.size()<<" >> " << pi.processPath;
 			}
+			in.close();
 		}
 		if (m_processList.size() == 0)return;
 		
