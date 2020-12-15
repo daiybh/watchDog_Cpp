@@ -9,6 +9,9 @@
 #include <windows.h>
 #include <winnt.h>
 #include "myLogger.h"
+#include <functional>
+using logCallBack = std::function<void(std::string log)>;
+
 class ProcessMoniter
 {
 	std::thread *m_thread = nullptr;
@@ -18,7 +21,8 @@ class ProcessMoniter
 		int pid;
 	};
 	std::map<std::string, processInfo> m_processList;
-public:
+	logCallBack m_logCallBack=nullptr;
+
 
 	int execmd_z(char* cmd, char* result, int pos)
 	{
@@ -79,23 +83,29 @@ public:
 			CloseHandle(hProcessSnap);
 		return pid;
 	}
-
-	void startMoniter() 
+public:
+	void setLogCallback(logCallBack logCB)
+	{
+		m_logCallBack = logCB;
+	}
+	void startMoniter()
 	{
 		//read ini
-		std::ifstream in("process.mj");
+		char path[255];
+		GetModuleFileNameA(nullptr, path, 255);
+		char*p1 = path;
+		char* p = strrchr(p1, '\\');
+		p++;
+		*p = '\0';
+		char iniFile[255];
+		sprintf(iniFile, "%s\\process.mj", path);
+		std::ifstream in(iniFile);
 
-		LOGI << "read from process.mj";
+		LOGI << "read from "<< iniFile;
+		if(m_logCallBack)
+			m_logCallBack("read from " + std::string(iniFile));
 		if (in.is_open()) 
 		{
-			char path[255];
-			GetModuleFileNameA(nullptr, path, 255);
-			char*p1 = path;
-			char* p= strrchr(p1, '\\');
-			p++;
-			*p = '\0';
-
-
 			std::string str(path);
 			while (!in.eof()) 
 			{
@@ -116,6 +126,8 @@ public:
 				m_processList.emplace(name,pi);
 
 				LOGI << m_processList.size()<<" >> " << pi.processPath;
+				if (m_logCallBack)
+					m_logCallBack("p>> " + pi.processPath);
 			}
 			in.close();
 		}
@@ -126,6 +138,9 @@ public:
 	void stopMoniter() {
 
 		LOGI << "stop moniter";
+
+		if (m_logCallBack)
+			m_logCallBack("stop moniter");
 		m_bExit = true;
 		if (m_thread)
 		{
@@ -145,6 +160,9 @@ public:
 				if (pid == -1)
 				{
 					LOGI << "startProcess:" << item.second.processPath;
+
+					if (m_logCallBack)
+						m_logCallBack("startProcess: " + item.second.processPath);
 					ShellExecuteA(nullptr, nullptr, item.second.processPath.data(), nullptr, nullptr, SW_SHOWNORMAL);
 				}
 			}

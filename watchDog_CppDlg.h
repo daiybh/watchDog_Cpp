@@ -41,4 +41,6 @@ public:
 	void handle_rbuttonup();
 	afx_msg void OnDestroy();
 	afx_msg void OnTimer(UINT_PTR nIDEvent);
+	CListBox m_listBOx;
+	int m_count = 0;
 };

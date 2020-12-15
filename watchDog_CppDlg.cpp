@@ -27,6 +27,7 @@ CwatchDogCppDlg::CwatchDogCppDlg(CWnd* pParent /*=nullptr*/)
 void CwatchDogCppDlg::DoDataExchange(CDataExchange* pDX)
 {
 	CDialogEx::DoDataExchange(pDX);
+	DDX_Control(pDX, IDC_LIST1, m_listBOx);
 }
 
 BEGIN_MESSAGE_MAP(CwatchDogCppDlg, CDialogEx)
@@ -49,10 +50,20 @@ BOOL CwatchDogCppDlg::OnInitDialog()
 	//  when the application's main window is not a dialog
 	SetIcon(m_hIcon, TRUE);			// Set big icon
 	SetIcon(m_hIcon, FALSE);		// Set small icon
-
 	// TODO: Add extra initialization here
+	pm.setLogCallback([&](std::string log) {
+		CString a;
+		CTime t = CTime::GetCurrentTime();
+		if (m_listBOx.GetCount() > 10)
+		{
+			m_listBOx.DeleteString(10);
+		}
+		a.Format("%d %s>> %s", m_count++, t.Format("%D %H:%M:%S"), log.data());
+		m_listBOx.InsertString(0, a);
+		});
+	SetDlgItemText(IDOK, "start");
+
 	SetTimer(1, 1000, nullptr);
-	pm.startMoniter();
 	return TRUE;  // return TRUE  unless you set the focus to a control
 }
 
@@ -99,13 +110,13 @@ void CwatchDogCppDlg::OnBnClickedOk()
 	// TODO: Add your control notification handler code here
 	CString text;
 	GetDlgItemText(IDOK,text);
-	if (text == "start")
+	if (text == "stop")
 	{
-		SetDlgItemText(IDOK, "stop");
+		SetDlgItemText(IDOK, "start");
 		pm.stopMoniter();
 	}
 	else {
-		SetDlgItemText(IDOK, "start");
+		SetDlgItemText(IDOK, "stop");
 		pm.startMoniter();
 	}
 }
@@ -233,6 +244,7 @@ void CwatchDogCppDlg::OnTimer(UINT_PTR nIDEvent)
 {
 	// TODO: Add your message handler code here and/or call default
 	ToTray();
+	OnBnClickedOk();
 	KillTimer(1);
 	CDialogEx::OnTimer(nIDEvent);
 }
