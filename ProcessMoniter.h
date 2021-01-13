@@ -151,19 +151,22 @@ public:
 	}
 public:
 	void runThread() {
-		LOGI << "start moniter thread";
-
+		LOGI << "start moniter thread  "<< GetTickCount();
+		
 		while (!m_bExit) {
-			for (auto &item : m_processList	)
+			if (GetTickCount() > 10 *60* 1000)
 			{
-				int pid = findProcessByName(CString(item.first.data()));
-				if (pid == -1)
+				for (auto &item : m_processList)
 				{
-					LOGI << "startProcess:" << item.second.processPath;
+					int pid = findProcessByName(CString(item.first.data()));
+					if (pid == -1)
+					{
+						LOGI << "startProcess:" << item.second.processPath;
 
-					if (m_logCallBack)
-						m_logCallBack("startProcess: " + item.second.processPath);
-					ShellExecuteA(nullptr, nullptr, item.second.processPath.data(), nullptr, nullptr, SW_SHOWNORMAL);
+						if (m_logCallBack)
+							m_logCallBack("startProcess: " + item.second.processPath);
+						ShellExecuteA(nullptr, nullptr, item.second.processPath.data(), nullptr, nullptr, SW_SHOWNORMAL);
+					}
 				}
 			}
 			Sleep(1000);
