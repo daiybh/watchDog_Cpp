@@ -11,18 +11,51 @@
 #include "myLogger.h"
 #include <functional>
 using logCallBack = std::function<void(std::string log)>;
-
+#include <myIPC.h>
 class ProcessMoniter
 {
 	std::thread *m_thread = nullptr;
 	bool m_bExit = false;
+	struct LastIPC {
+
+		MyIPC  myIPC;
+		uint64_t lastReadData = 0;
+		uint64_t lastGettime = 0;
+		void reset()
+		{
+			lastReadData = 0;
+		}
+		bool check()
+		{
+			if (myIPC.getData() != lastReadData)
+			{
+				lastReadData = myIPC.getData();
+				lastGettime = GetTickCount();
+				return true;
+			}
+			if (GetTickCount() - lastGettime > 60 * 1000) {
+				return false;
+			}
+			return true;
+		}
+	};
 	struct processInfo {
+		LastIPC lastIPC;
+		uint64_t startTime = 0;
+		void  reset() {
+			startTime = GetTickCount();
+			lastIPC.reset();
+		}
+		bool check() {
+			if (GetTickCount() - startTime < 10 * 60 * 1000)
+				return true;
+			return lastIPC.check();
+		}
 		std::string processPath;
 		int pid;
 	};
-	std::map<std::string, processInfo> m_processList;
+	std::map<std::string, processInfo*> m_processList;
 	logCallBack m_logCallBack=nullptr;
-
 
 	int execmd_z(char* cmd, char* result, int pos)
 	{
@@ -109,25 +142,27 @@ public:
 			std::string str(path);
 			while (!in.eof()) 
 			{
-				processInfo pi;
-				std::getline(in, pi.processPath);
+				processInfo *pi=new processInfo;
+				std::getline(in, pi->processPath);
 
-				std::transform(pi.processPath.begin(), pi.processPath.end(), pi.processPath.begin(), ::tolower);
-				int pst = pi.processPath.rfind('\\');
-				std::string name = pi.processPath.substr(pst + 1);
-				if (pi.processPath[1] != ':')
+				std::transform(pi->processPath.begin(), pi->processPath.end(), pi->processPath.begin(), ::tolower);
+				int pst = pi->processPath.rfind('\\');
+				std::string name = pi->processPath.substr(pst + 1);
+				if (pi->processPath[1] != ':')
 				{
 
 					char pathA[255];
-					sprintf(pathA, "%s%s", path, pi.processPath.data());
+					sprintf(pathA, "%s%s", path, pi->processPath.data());
 
-					pi.processPath = pathA;
+					pi->processPath = pathA;
 				}
+
+				pi->lastIPC.myIPC.open(name);
 				m_processList.emplace(name,pi);
 
-				LOGI << m_processList.size()<<" >> " << pi.processPath;
+				LOGI << m_processList.size()<<" >> " << pi->processPath;
 				if (m_logCallBack)
-					m_logCallBack("p>> " + pi.processPath);
+					m_logCallBack("p>> " + pi->processPath);
 			}
 			in.close();
 		}
@@ -161,11 +196,27 @@ public:
 					int pid = findProcessByName(CString(item.first.data()));
 					if (pid == -1)
 					{
-						LOGI << "startProcess:" << item.second.processPath;
+						LOGI << "startProcess:" << item.second->processPath;
 
 						if (m_logCallBack)
-							m_logCallBack("startProcess: " + item.second.processPath);
-						ShellExecuteA(nullptr, nullptr, item.second.processPath.data(), nullptr, nullptr, SW_SHOWNORMAL);
+							m_logCallBack("startProcess: " + item.second->processPath);
+						ShellExecuteA(nullptr, nullptr, item.second->processPath.data(), nullptr, nullptr, SW_SHOWNORMAL);
+						item.second->reset();
+					}
+					else
+					{
+						if (!item.second->check())
+						{
+							LOGI << "live cound dont move since 1 minute ,restart it. " << item.first.data();
+						//	char cmd[1024];
+						//	sprintf_s(cmd, "taskkill /f /im %s.exe", item.first.data());
+						//	system(cmd);
+
+							HANDLE explorer;
+							explorer = OpenProcess(PROCESS_ALL_ACCESS, false, pid);
+							TerminateProcess(explorer, 1);
+
+						}
 					}
 				}
 			}

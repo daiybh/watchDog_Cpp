@@ -36,6 +36,9 @@
     <ClInclude Include="ProcessMoniter.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="myIPC.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="watchDog_Cpp.cpp">

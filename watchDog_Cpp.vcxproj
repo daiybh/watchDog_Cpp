@@ -186,6 +186,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="framework.h" />
+    <ClInclude Include="myIPC.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="ProcessMoniter.h" />
     <ClInclude Include="Resource.h" />
