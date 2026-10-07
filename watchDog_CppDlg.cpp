@@ -15,6 +15,12 @@
 #define WM_MY_SHOWTASK (WM_USER + 120)
 #define WM_APP_LOG     (WM_USER + 121)
 
+// Explorer（任务栏）崩溃或重启后会向所有顶层窗口广播 TaskbarCreated，
+// 此前 NIM_ADD 的托盘图标会被全部丢弃，必须在收到时重新添加。
+// 注意：必须用 ON_REGISTERED_MESSAGE（消息 ID 是运行时才确定的），
+// 而且该变量要定义在 BEGIN_MESSAGE_MAP 之前。
+static const UINT g_uTaskbarCreatedMsg = RegisterWindowMessage(_T("TaskbarCreated"));
+
 // CwatchDogCppDlg dialog
 
 
@@ -36,6 +42,7 @@ BEGIN_MESSAGE_MAP(CwatchDogCppDlg, CDialogEx)
 	ON_WM_QUERYDRAGICON()
 	ON_MESSAGE(WM_MY_SHOWTASK, OnShowTask)
 	ON_MESSAGE(WM_APP_LOG, OnAppLog)
+	ON_REGISTERED_MESSAGE(g_uTaskbarCreatedMsg, OnTaskbarCreated)
 	ON_BN_CLICKED(IDOK, &CwatchDogCppDlg::OnBnClickedOk)
 	ON_WM_SYSCOMMAND()
 	ON_WM_DESTROY()
@@ -164,34 +171,59 @@ void CwatchDogCppDlg::OnSysCommand(UINT nID, LPARAM lParam)
 		CDialogEx::OnSysCommand(nID, lParam);
 }
 
-void CwatchDogCppDlg::ToTray()
+// 填充托盘图标数据（ToTray / 任务栏重建后重加 共用同一份逻辑）
+static void FillTrayData(NOTIFYICONDATA &nid, HWND hWnd)
 {
-	NOTIFYICONDATA nid = {};
+	nid = {};
 	nid.cbSize = DWORD(sizeof(NOTIFYICONDATA));
-	nid.hWnd = this->m_hWnd;
+	nid.hWnd = hWnd;
 	nid.uID = IDR_MAINFRAME;
 	nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
 	nid.uCallbackMessage = WM_MY_SHOWTASK;
 	nid.hIcon = LoadIcon(AfxGetInstanceHandle(), MAKEINTRESOURCE(IDR_MAINFRAME));
 	_tcsncpy_s(nid.szTip, _countof(nid.szTip), _T("watchDog"), _TRUNCATE);
+}
 
-	if (IsWindowVisible())
-		Shell_NotifyIcon(NIM_ADD, &nid);
-	else
+void CwatchDogCppDlg::ToTray()
+{
+	NOTIFYICONDATA nid;
+	FillTrayData(nid, m_hWnd);
+
+	// 用状态位而不是 IsWindowVisible() 判断：任务栏重建后要依据同一个状态位决定是否重加
+	if (m_bTrayIcon)
 		Shell_NotifyIcon(NIM_MODIFY, &nid);
+	else
+		m_bTrayIcon = Shell_NotifyIcon(NIM_ADD, &nid) ? true : false;
+
 	ShowWindow(SW_HIDE);
 }
 
 void CwatchDogCppDlg::DeleteTray()
 {
-	NOTIFYICONDATA nid = {};
-	nid.cbSize = DWORD(sizeof(NOTIFYICONDATA));
-	nid.hWnd = this->m_hWnd;
-	nid.uID = IDR_MAINFRAME;
-	nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
-	nid.uCallbackMessage = WM_MY_SHOWTASK;
-	nid.hIcon = LoadIcon(AfxGetInstanceHandle(), MAKEINTRESOURCE(IDR_MAINFRAME));
+	if (!m_bTrayIcon)
+		return;
+	NOTIFYICONDATA nid;
+	FillTrayData(nid, m_hWnd);
 	Shell_NotifyIcon(NIM_DELETE, &nid);
+	m_bTrayIcon = false;
+}
+
+// 任务栏（Explorer）重建：之前添加的图标已经丢了，按状态位重新添加
+LRESULT CwatchDogCppDlg::OnTaskbarCreated(WPARAM /*wParam*/, LPARAM /*lParam*/)
+{
+	if (!m_bTrayIcon)
+		return 0;   // 窗口当前是显示状态，本来就没有图标
+
+	NOTIFYICONDATA nid;
+	FillTrayData(nid, m_hWnd);
+	if (!Shell_NotifyIcon(NIM_ADD, &nid))
+	{
+		// 极少数情况下图标其实还在（NIM_ADD 会失败），改用 MODIFY 刷新
+		if (!Shell_NotifyIcon(NIM_MODIFY, &nid))
+			LOGW << "TaskbarCreated: refresh tray icon failed, err=" << GetLastError();
+		// 重加失败时保持 m_bTrayIcon = true：下次 ToTray/再收到广播时会继续补
+	}
+	return 0;
 }
 
 LRESULT CwatchDogCppDlg::OnShowTask(WPARAM wParam, LPARAM lParam)

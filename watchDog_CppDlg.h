@@ -41,6 +41,7 @@ public:
 	void ToTray();
 	void DeleteTray();
 	LRESULT OnShowTask(WPARAM wParam, LPARAM lParam);
+	LRESULT OnTaskbarCreated(WPARAM wParam, LPARAM lParam);
 	void handle_rbuttonup();
 	afx_msg void OnDestroy();
 	afx_msg void OnTimer(UINT_PTR nIDEvent);
@@ -48,6 +49,9 @@ public:
 	CListBox m_listBOx;
 	int m_count = 0;
 	bool m_bMonitoring = false;
+	// 图标当前是否应该存在于托盘（窗口被收进托盘时为 true）。
+	// Explorer 重启后据此判断要不要重新 NIM_ADD
+	bool m_bTrayIcon = false;
 
 	// 监控线程只投递消息，真正刷新列表在 UI 线程完成
 	std::mutex m_logMutex;
