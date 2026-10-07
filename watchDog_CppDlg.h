@@ -1,9 +1,12 @@
-
+﻿
 // watchDog_CppDlg.h : header file
 //
 
 #pragma once
 #include "ProcessMoniter.h"
+#include <deque>
+#include <mutex>
+#include <string>
 
 
 // CwatchDogCppDlg dialog
@@ -41,6 +44,12 @@ public:
 	void handle_rbuttonup();
 	afx_msg void OnDestroy();
 	afx_msg void OnTimer(UINT_PTR nIDEvent);
+	LRESULT OnAppLog(WPARAM wParam, LPARAM lParam);
 	CListBox m_listBOx;
 	int m_count = 0;
+	bool m_bMonitoring = false;
+
+	// 监控线程只投递消息，真正刷新列表在 UI 线程完成
+	std::mutex m_logMutex;
+	std::deque<std::string> m_logQueue;
 };

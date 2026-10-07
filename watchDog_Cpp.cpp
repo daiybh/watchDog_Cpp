@@ -1,4 +1,4 @@
-
+ï»¿
 // watchDog_Cpp.cpp : Defines the class behaviors for the application.
 //
 
@@ -41,31 +41,38 @@ CwatchDogCppApp theApp;
 
 void windowsRun(char* exePath)
 {
-	//Ğ´Èë×¢²á±í,¿ª»ú×ÔÆô¶¯
+	//å†™å…¥æ³¨å†Œè¡¨,å¼€æœºè‡ªå¯åŠ¨
 	HKEY hKey;
-	//ÕÒµ½ÏµÍ³µÄÆô¶¯Ïî
+	//æ‰¾åˆ°ç³»ç»Ÿçš„å¯åŠ¨é¡¹
 	const char* lpRun = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
-	//´ò¿ªÆô¶¯ÏîKey
+	//æ‰“å¼€å¯åŠ¨é¡¹Key
 	long lRet = RegOpenKeyExA(HKEY_LOCAL_MACHINE, lpRun, 0, KEY_WRITE, &hKey);
 	
 	if (lRet == ERROR_SUCCESS)
 	{
-		//µÃµ½³ÌĞò×ÔÉíµÄÈ«Â·¾¶
-		DWORD dwRet = strlen(exePath);
-		char*p1 = strrchr(exePath, '\\');
+		//å¾—åˆ°ç¨‹åºè‡ªèº«çš„å…¨è·¯å¾„
+		char* p1 = strrchr(exePath, '\\');
+		if (p1 == nullptr)
+		{
+			RegCloseKey(hKey);
+			LOGE << "æ³¨å†Œç³»ç»Ÿå¯åŠ¨å¤±è´¥ ï¼Œç¨‹åºè·¯å¾„æ— æ•ˆ";
+			return;
+		}
 		const char* saKey = p1 + 1;// ("anlyzeJson");
-		//Ìí¼ÓÒ»¸ö×ÓKey,²¢ÉèÖÃÖµ // ÏÂÃæµÄ"getip"ÊÇÓ¦ÓÃ³ÌĞòÃû×Ö£¨²»¼Óºó×º.exe£©
+		//æ·»åŠ ä¸€ä¸ªå­Key,å¹¶è®¾ç½®å€¼ // ä¸‹é¢çš„"getip"æ˜¯åº”ç”¨ç¨‹åºåå­—ï¼ˆä¸åŠ åç¼€.exeï¼‰
+		// REG_SZ å¿…é¡»åŒ…å«ç»“å°¾çš„ '\0'ï¼Œå¦åˆ™è¯»å‡ºæ¥çš„è‡ªå¯åŠ¨å‘½ä»¤å¯èƒ½è¢«æˆªæ–­
+		const DWORD dwRet = (DWORD)strlen(exePath) + 1;
 		lRet = RegSetValueExA(hKey, saKey, 0, REG_SZ, (BYTE*)exePath, dwRet);
 
-		//¹Ø±Õ×¢²á±í
+		//å…³é—­æ³¨å†Œè¡¨
 		RegCloseKey(hKey);
 	}
 
 	if (lRet != ERROR_SUCCESS)
 	{
-		//printf("ÏµÍ³²ÎÊı´íÎó,²»ÄÜËæÏµÍ³Æô¶¯");
+		//printf("ç³»ç»Ÿå‚æ•°é”™è¯¯,ä¸èƒ½éšç³»ç»Ÿå¯åŠ¨");
 		
-		LOGE << "×¢²áÏµÍ³Æô¶¯Ê§°Ü £¬ÇëÊ¹ÓÃ¹ÜÀíÔ±È¨ÏŞÔËĞĞ";
+		LOGE << "æ³¨å†Œç³»ç»Ÿå¯åŠ¨å¤±è´¥ ï¼Œè¯·ä½¿ç”¨ç®¡ç†å‘˜æƒé™è¿è¡Œ";
 		return;
 	}
 
@@ -73,19 +80,20 @@ void windowsRun(char* exePath)
 BOOL CwatchDogCppApp::InitInstance()
 {
 
-	HANDLE mutex = OpenMutexA(MUTEX_ALL_ACCESS, FALSE,"CwatchDogCppApp::InitInstance_202012150954");
-	if (mutex == nullptr)
-		mutex = CreateMutexA(nullptr, FALSE, "CwatchDogCppApp::InitInstance_202012150954");
-	else
+	// å•å®ä¾‹ä¿æŠ¤ï¼šç›´æ¥ç”¨ CreateMutexA + ERROR_ALREADY_EXISTS åˆ¤æ–­ã€‚
+	// åŸå®ç°å…ˆ OpenMutexA(MUTEX_ALL_ACCESS)ï¼Œå½“å·²å®ä¾‹ä»¥æ›´é«˜æƒé™è¿è¡Œï¼ˆDACL ä¸åŒï¼‰æ—¶
+	// ä¼šè¿”å› ACCESS_DENIEDï¼Œä»è€Œè¯¯åˆ¤ä¸ºâ€œæ²¡æœ‰ç¬¬äºŒä¸ªå®ä¾‹â€ï¼Œå¯¼è‡´é‡å¤å¯åŠ¨
+	HANDLE mutex = CreateMutexA(nullptr, FALSE, "CwatchDogCppApp::InitInstance_202012150954");
+	if (mutex != nullptr && GetLastError() == ERROR_ALREADY_EXISTS)
 	{
 		CloseHandle(mutex);
-		return EXIT_FAILURE;
+		return FALSE;
 	}
 
 	initLogger();
 	LOGD << "############ CwatchDogCppDlg start ############";
-	char path[255];
-	GetModuleFileNameA(nullptr, path, 255);
+	char path[MAX_PATH] = { 0 };
+	GetModuleFileNameA(nullptr, path, MAX_PATH);
 	windowsRun(path);
 
 	// InitCommonControlsEx() is required on Windows XP if an application

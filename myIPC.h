@@ -1,52 +1,93 @@
-#pragma once
+ï»¿#pragma once
 #include <windows.h>
-class MyIPC {
+#include <stdint.h>
+#include <string>
+
+// åŸºäºå‘½åæ–‡ä»¶æ˜ å°„ï¼ˆå…±äº«å†…å­˜ï¼‰çš„è·¨è¿›ç¨‹å¿ƒè·³å°è£…ã€‚
+// è¢«ç›‘æ§ç¨‹åºå‘¨æœŸæ€§å†™å…¥è®¡æ•°ï¼Œçœ‹é—¨ç‹—åªè¯»è¯¥è®¡æ•°å¹¶åˆ¤æ–­æ˜¯å¦è¶…æ—¶ã€‚
+class MyIPC
+{
 
 public:
 	MyIPC() {}
-	
-	void open(std::string appName)
+	MyIPC(const MyIPC&) = delete;
+	MyIPC& operator=(const MyIPC&) = delete;
+
+	// æ‰“å¼€ï¼ˆä¸å­˜åœ¨æ—¶åˆ›å»ºï¼‰å…±äº«å†…å­˜ï¼ŒæˆåŠŸè¿”å› true
+	bool open(const std::string& appName)
 	{
+		close(); // å…è®¸é‡å¤ openï¼Œå…ˆé‡Šæ”¾ä¸Šä¸€æ¬¡çš„æ˜ å°„
+
 		strMapName = "MYIPC." + appName + ".ShareMemory";
-		// Ê×ÏÈÊÔÍ¼´ò¿ªÒ»¸öÃüÃûµÄÄÚ´æÓ³ÉäÎÄ¼ş¶ÔÏó  
-		hMap = ::OpenFileMappingA(FILE_MAP_ALL_ACCESS, 0, (LPCSTR)strMapName.c_str());
-		if (NULL == hMap)
-		{    // ´ò¿ªÊ§°Ü£¬´´½¨Ö®
+		hMap = ::OpenFileMappingA(FILE_MAP_ALL_ACCESS, FALSE, (LPCSTR)strMapName.c_str());
+		const bool bCreated = (NULL == hMap);
+		if (bCreated)
+		{   // ä¸å­˜åœ¨åˆ™åˆ›å»º
 			hMap = ::CreateFileMappingA(INVALID_HANDLE_VALUE,
 				NULL,
 				PAGE_READWRITE,
 				0,
 				100,
 				(LPCSTR)strMapName.c_str());
-			//Èç¹ûÓĞÎÊÌâÓÃL"name"ĞÎÊ½
-			 // Ó³Éä¶ÔÏóµÄÒ»¸öÊÓÍ¼£¬µÃµ½Ö¸Ïò¹²ÏíÄÚ´æµÄÖ¸Õë£¬ÉèÖÃÀïÃæµÄÊı¾İ
-			pBuffer = ::MapViewOfFile(hMap, FILE_MAP_ALL_ACCESS, 0, 0, 0);
-			//strcpy((char*)pBuffer, strComData.c_str());
+		}
+		if (NULL == hMap)
+		{   // åˆ›å»º/æ‰“å¼€éƒ½å¤±è´¥ï¼ˆä¾‹å¦‚æƒé™ä¸è¶³ï¼‰ï¼Œä¿æŒæœªæ‰“å¼€çŠ¶æ€
+			pBuffer = nullptr;
+			return false;
+		}
+
+		// æ˜ å°„åˆ°è¿›ç¨‹åœ°å€ç©ºé—´ï¼Œå¾—åˆ°æŒ‡å‘å…±äº«å†…å­˜çš„æŒ‡é’ˆ
+		pBuffer = ::MapViewOfFile(hMap, FILE_MAP_ALL_ACCESS, 0, 0, 0);
+		if (NULL == pBuffer)
+		{
+			::CloseHandle(hMap);
+			hMap = nullptr;
+			return false;
+		}
+
+		if (bCreated)
 			setData(100);
-		}
-		else
-		{    // ´ò¿ª³É¹¦£¬Ó³Éä¶ÔÏóµÄÒ»¸öÊÓÍ¼£¬µÃµ½Ö¸Ïò¹²ÏíÄÚ´æµÄÖ¸Õë£¬ÏÔÊ¾³öÀïÃæµÄÊı¾İ
-			pBuffer = ::MapViewOfFile(hMap, FILE_MAP_ALL_ACCESS, 0, 0, 0);
-		}
+		return true;
 	}
+
+	bool isOpened() const
+	{
+		return pBuffer != nullptr;
+	}
+
 	void setData(uint64_t tCount)
 	{
+		if (!pBuffer)
+			return;
 		*((uint64_t*)pBuffer) = tCount;
 	}
 
-	uint64_t  getData()
+	uint64_t getData()
 	{
-		uint64_t* pI = (uint64_t*)pBuffer;
-		return *(pI);
+		if (!pBuffer)
+			return 0;
+		return *((uint64_t*)pBuffer);
 	}
+
 	~MyIPC() {
-		// ½â³ıÎÄ¼şÓ³Éä£¬¹Ø±ÕÄÚ´æÓ³ÉäÎÄ¼ş¶ÔÏó¾ä±ú
-		::UnmapViewOfFile(pBuffer);
-		::CloseHandle(hMap);
+		close();
 	}
 private:
-	std::string strMapName = ("xieTongAppDlg.ShareMemory");                // ÄÚ´æÓ³Éä¶ÔÏóÃû³Æ
-	std::string strComData = ("This is common data!");        // ¹²ÏíÄÚ´æÖĞµÄÊı¾İ
-	LPVOID pBuffer;                                    // ¹²ÏíÄÚ´æÖ¸Õë
-	HANDLE hMap = nullptr;
+	void close()
+	{
+		if (pBuffer)
+		{
+			::UnmapViewOfFile(pBuffer);
+			pBuffer = nullptr;
+		}
+		if (hMap)
+		{
+			::CloseHandle(hMap);
+			hMap = nullptr;
+		}
+	}
+
+	std::string strMapName = ("xieTongAppDlg.ShareMemory"); // å†…å­˜æ˜ å°„å¯¹è±¡å
+	HANDLE hMap = nullptr;      // æ–‡ä»¶æ˜ å°„å¥æŸ„
+	LPVOID pBuffer = nullptr;   // æ˜ å°„è§†å›¾æŒ‡é’ˆï¼Œæœªæ‰“å¼€æ—¶ä¸º nullptr
 };

@@ -1,4 +1,4 @@
-
+﻿
 // watchDog_CppDlg.cpp : implementation file
 //
 
@@ -13,6 +13,7 @@
 #endif
 
 #define WM_MY_SHOWTASK (WM_USER + 120)
+#define WM_APP_LOG     (WM_USER + 121)
 
 // CwatchDogCppDlg dialog
 
@@ -34,6 +35,7 @@ BEGIN_MESSAGE_MAP(CwatchDogCppDlg, CDialogEx)
 	ON_WM_PAINT()
 	ON_WM_QUERYDRAGICON()
 	ON_MESSAGE(WM_MY_SHOWTASK, OnShowTask)
+	ON_MESSAGE(WM_APP_LOG, OnAppLog)
 	ON_BN_CLICKED(IDOK, &CwatchDogCppDlg::OnBnClickedOk)
 	ON_WM_SYSCOMMAND()
 	ON_WM_DESTROY()
@@ -51,20 +53,49 @@ BOOL CwatchDogCppDlg::OnInitDialog()
 	SetIcon(m_hIcon, TRUE);			// Set big icon
 	SetIcon(m_hIcon, FALSE);		// Set small icon
 	// TODO: Add extra initialization here
-	pm.setLogCallback([&](std::string log) {
-		CString a;
-		CTime t = CTime::GetCurrentTime();
-		if (m_listBOx.GetCount() > 10)
+	// 注意：日志回调会被监控线程调用，这里只能投递消息，不能直接操作 UI 控件
+	pm.setLogCallback([this](std::string log) {
 		{
-			m_listBOx.DeleteString(10);
+			std::lock_guard<std::mutex> lock(m_logMutex);
+			if (m_logQueue.size() >= 200)
+				m_logQueue.pop_front();
+			m_logQueue.push_back(std::move(log));
 		}
-		a.Format("%d %s>> %s", m_count++, t.Format("%D %H:%M:%S"), log.data());
-		m_listBOx.InsertString(0, a);
+		PostMessage(WM_APP_LOG);
 		});
-	SetDlgItemText(IDOK, "start");
+	SetDlgItemText(IDOK, _T("start"));
 
 	SetTimer(1, 1000, nullptr);
 	return TRUE;  // return TRUE  unless you set the focus to a control
+}
+
+// 由监控线程 PostMessage 触发，在 UI 线程里刷新列表框
+LRESULT CwatchDogCppDlg::OnAppLog(WPARAM /*wParam*/, LPARAM /*lParam*/)
+{
+	if (!::IsWindow(m_listBOx.GetSafeHwnd()))
+		return 0;
+
+	std::deque<std::string> logs;
+	{
+		std::lock_guard<std::mutex> lock(m_logMutex);
+		logs.swap(m_logQueue);
+	}
+	if (logs.empty())
+		return 0;
+
+	const CTime t = CTime::GetCurrentTime();
+	for (const std::string &log : logs)
+	{
+		CString sLog(log.c_str());
+		CString a;
+		a.Format(_T("%d %s>> %s"), m_count++, (LPCTSTR)t.Format(_T("%D %H:%M:%S")), (LPCTSTR)sLog);
+		m_listBOx.InsertString(0, a);   // 最新的在最上面
+	}
+	// 只保留最近 10 条（去掉 LBS_SORT 后，末尾的就是最旧的）
+	while (m_listBOx.GetCount() > 10)
+		m_listBOx.DeleteString(m_listBOx.GetCount() - 1);
+
+	return 0;
 }
 
 // If you add a minimize button to your dialog, you will need the code below
@@ -108,15 +139,15 @@ HCURSOR CwatchDogCppDlg::OnQueryDragIcon()
 void CwatchDogCppDlg::OnBnClickedOk()
 {
 	// TODO: Add your control notification handler code here
-	CString text;
-	GetDlgItemText(IDOK,text);
-	if (text == "stop")
+	if (m_bMonitoring)
 	{
-		SetDlgItemText(IDOK, "start");
+		m_bMonitoring = false;
+		SetDlgItemText(IDOK, _T("start"));
 		pm.stopMoniter();
 	}
 	else {
-		SetDlgItemText(IDOK, "stop");
+		m_bMonitoring = true;
+		SetDlgItemText(IDOK, _T("stop"));
 		pm.startMoniter();
 	}
 }
@@ -135,16 +166,14 @@ void CwatchDogCppDlg::OnSysCommand(UINT nID, LPARAM lParam)
 
 void CwatchDogCppDlg::ToTray()
 {
-	NOTIFYICONDATA nid;
+	NOTIFYICONDATA nid = {};
 	nid.cbSize = DWORD(sizeof(NOTIFYICONDATA));
 	nid.hWnd = this->m_hWnd;
 	nid.uID = IDR_MAINFRAME;
 	nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
 	nid.uCallbackMessage = WM_MY_SHOWTASK;
 	nid.hIcon = LoadIcon(AfxGetInstanceHandle(), MAKEINTRESOURCE(IDR_MAINFRAME));
-	CString strTip;
-	strTip.Format("watchDog");
-	strcpy(nid.szTip,  strTip);
+	_tcsncpy_s(nid.szTip, _countof(nid.szTip), _T("watchDog"), _TRUNCATE);
 
 	if (IsWindowVisible())
 		Shell_NotifyIcon(NIM_ADD, &nid);
@@ -155,7 +184,7 @@ void CwatchDogCppDlg::ToTray()
 
 void CwatchDogCppDlg::DeleteTray()
 {
-	NOTIFYICONDATA nid;
+	NOTIFYICONDATA nid = {};
 	nid.cbSize = DWORD(sizeof(NOTIFYICONDATA));
 	nid.hWnd = this->m_hWnd;
 	nid.uID = IDR_MAINFRAME;
@@ -214,24 +243,27 @@ void CwatchDogCppDlg::handle_rbuttonup()
 	menu.AppendMenu(MF_STRING, TRAY_DESTROY, _T("Exit"));
 
 	SetForegroundWindow();
-	const std::unique_ptr<POINT> lpoint = std::make_unique<POINT>();
-	GetCursorPos(lpoint.get());
-	const TrayCmd iSelectedMenuId = static_cast<TrayCmd>(menu.TrackPopupMenu(TPM_LEFTALIGN | TPM_RETURNCMD, lpoint->x, lpoint->y, this));
+	POINT lpoint = {};
+	GetCursorPos(&lpoint);
+	const int iSelectedMenuId = menu.TrackPopupMenu(TPM_LEFTALIGN | TPM_RETURNCMD, lpoint.x, lpoint.y, this);
+	PostMessage(WM_NULL);   // 让弹出的菜单立刻消失
 	switch (iSelectedMenuId)
 	{
 	case TRAY_DESTROY:
 	{
-		PostQuitMessage(0);
+		// 用 EndDialog 关闭模态对话框：会正常走 WM_DESTROY（移除托盘图标、停监控线程），
+		// 原来的 PostQuitMessage(0) 可能让对话框窗口挂住不销毁
+		EndDialog(IDCANCEL);
 		break;
 	}
 	default:break;
 	}
-	menu.Detach();
-	menu.DestroyMenu();
+	// 这里不要调用 Detach()：Detach 之后 CMenu 析构不会再销毁菜单句柄，句柄会泄漏
 }
 
 void CwatchDogCppDlg::OnDestroy()
 {
+	KillTimer(1);
 	pm.stopMoniter();
 	DeleteTray();
 
@@ -243,8 +275,19 @@ void CwatchDogCppDlg::OnDestroy()
 void CwatchDogCppDlg::OnTimer(UINT_PTR nIDEvent)
 {
 	// TODO: Add your message handler code here and/or call default
-	ToTray();
-	OnBnClickedOk();
-	KillTimer(1);
+	if (nIDEvent == 1)
+	{
+		KillTimer(1);
+		// 启动 1 秒后自动开始监控并收起窗口。
+		// 原来这里调用 OnBnClickedOk()（切换按钮状态），如果用户在第 1 秒内已经手动点过，
+		// 就会被反向切换成“停止”，监控反而没启动
+		if (!m_bMonitoring)
+		{
+			m_bMonitoring = true;
+			SetDlgItemText(IDOK, _T("stop"));
+			pm.startMoniter();
+		}
+		ToTray();
+	}
 	CDialogEx::OnTimer(nIDEvent);
 }
